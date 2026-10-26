@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Catálogo Interativo SHI-TEN</title>
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#212121">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -782,7 +784,7 @@ const abaSalva=ler("aba","simulador"); if($("#"+abaSalva))abrirAba(abaSalva);
 <div id="pwaBarra" role="dialog" aria-live="polite"><img src="icons/icon-192.png" alt=""><div class="t" id="pwaTxt"></div><button id="pwaOk"></button><button class="x" id="pwaX" aria-label="Fechar">×</button></div>
 <script>
 (function(){
-  var VERSAO="9afd1c21180f";
+  var VERSAO="37a8b6488fa9";
   var barra=document.getElementById("pwaBarra"),txt=document.getElementById("pwaTxt"),ok=document.getElementById("pwaOk"),x=document.getElementById("pwaX"),acao=null;
   function mostrar(html,botao,fn){txt.innerHTML=html;ok.textContent=botao;acao=fn;barra.style.display="flex"}
   ok.onclick=function(){if(acao)acao()};

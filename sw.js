@@ -1,5 +1,5 @@
 /* Service worker do catálogo SHI-TEN: rede primeiro, cache como reserva (funciona offline). */
-const CACHE = "shiten-9afd1c21180f";
+const CACHE = "shiten-37a8b6488fa9";
 const ARQUIVOS = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-64.png"];
 
 self.addEventListener("install", e => {
