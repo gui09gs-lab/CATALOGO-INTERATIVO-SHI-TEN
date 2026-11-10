@@ -160,6 +160,13 @@ table.med td.vazio{color:#bbb}
 @media (max-width:560px){.difs{grid-template-columns:1fr}}
 .difs div{background:var(--fundo);border-radius:8px;padding:10px 12px;border-left:3px solid var(--laranja)}
 .difs b{display:block;font-size:13px;margin-bottom:2px}
+.grafico{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:12px 12px 6px;margin-top:6px}
+.grafico .topo-g{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.grafico .seg{width:auto}
+.grafico .seg button{padding:6px 10px;font-size:11px}
+.grafico svg{width:100%;height:auto;display:block}
+.grafico .leg{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--cinza);padding:4px 2px 6px}
+.grafico .leg i{display:inline-block;width:14px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle}
 .difs span{font-size:13px;color:#444}
 .ficha .rodape{display:flex;flex-wrap:wrap;gap:8px;padding:0 20px 20px}
 
@@ -504,6 +511,42 @@ document.addEventListener("click",e=>{
   const g=e.target.closest("[data-gen]"); if(g){abrirFicha(g.dataset.gen);return}
 });
 
+/* ===== Gráfico de torque (faixas do catálogo, escala logarítmica) ===== */
+const UN_G={kgf:{k:"kgf",rot:"kgf·cm",dom:[0.2,130],ticks:[0.3,1,3,10,30,100]},nm:{k:"nm",rot:"N·m",dom:[0.02,13],ticks:[0.03,0.1,0.3,1,3,10]},lbf:{k:"lbf",rot:"lbf·in",dom:[0.2,115],ticks:[0.3,1,3,10,30,100]}};
+let unGraf=ler("ungraf","kgf");
+function graficoTorque(ativo,un,alvo,opt={}){
+  // devolve geometria para SVG e canvas
+  const U=UN_G[un]||UN_G.kgf, W=opt.w||640, linha=opt.linha||34, esq=opt.esq||92, dir=16, topo=10, base=28;
+  const H=topo+PARAF.length*linha+base, lw=W-esq-dir;
+  const lx=v=>esq+lw*(Math.log10(v)-Math.log10(U.dom[0]))/(Math.log10(U.dom[1])-Math.log10(U.dom[0]));
+  const fator=un==="nm"?KGF_NM:un==="lbf"?KGF_LBF:1;
+  const barras=PARAF.map((p,i)=>{const [a,b]=p[U.k];const ia=a+(b-a)*.2, ib=a+(b-a)*.8;return {p,i,a,b,ia,ib,y:topo+i*linha,on:p.id===ativo}});
+  const alvoU=alvo!=null?alvo*fator:null;
+  return {U,W,H,linha,esq,topo,lw,lx,barras,alvoU};
+}
+function graficoSVG(ativo,un,alvo){
+  const peq=window.innerWidth<600;const g=graficoTorque(ativo,un,alvo,peq?{w:340,esq:66,linha:30}:{});const {U,W,H,linha,esq,topo,lx,barras,alvoU}=g;
+  const nf=v=>fmt(v,v<0.1?3:2);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de faixas de torque da linha ST-B em ${U.rot}">`;
+  for(const t of U.ticks){const x=lx(t).toFixed(1);s+=`<line x1="${x}" x2="${x}" y1="${topo-4}" y2="${H-24}" stroke="#e6e6e6"/><text x="${x}" y="${H-8}" font-size="11" text-anchor="middle" fill="#6d6d6d">${nf(t)}</text>`}
+  for(const b of barras){
+    const cy=b.y+linha/2, x1=lx(b.a), x2=lx(b.b);
+    if(b.on)s+=`<rect x="0" y="${b.y+2}" width="${W}" height="${linha-4}" rx="6" fill="#FFF6E0"/>`;
+    s+=`<text x="${esq-10}" y="${cy+4}" font-size="12" font-weight="${b.on?800:600}" text-anchor="end" fill="${b.on?"#212121":"#6d6d6d"}">${b.p.id}</text>`;
+    s+=`<rect x="${x1.toFixed(1)}" y="${cy-6}" width="${(x2-x1).toFixed(1)}" height="12" rx="3" fill="${b.on?"#212121":"#c9c9c9"}"/>`;
+    if(b.on){s+=`<rect x="${lx(b.ia).toFixed(1)}" y="${cy-6}" width="${(lx(b.ib)-lx(b.ia)).toFixed(1)}" height="12" rx="3" fill="#FDA700"/>`;
+      const fora=x2>W-(peq?70:90);s+=`<text x="${(fora?x1-6:x2+6).toFixed(1)}" y="${cy+4}" font-size="11" font-weight="800" text-anchor="${fora?"end":"start"}" fill="#212121">${nf(b.a)} – ${nf(b.b)}</text>`}
+  }
+  if(alvoU!=null&&alvoU>=U.dom[0]&&alvoU<=U.dom[1]){const x=lx(alvoU).toFixed(1);s+=`<line x1="${x}" x2="${x}" y1="${topo-6}" y2="${H-24}" stroke="#E30613" stroke-width="2.5"/><text x="${x}" y="${topo+2}" dx="4" font-size="11" font-weight="800" fill="#E30613">alvo ${nf(alvoU)}</text>`}
+  return s+"</svg>";
+}
+function blocoGrafico(id){
+  return `<h5>Gráfico de torque</h5><div class="grafico" data-graf="${id}"><div class="topo-g"><span style="font-size:12px;color:var(--cinza)">Faixa de torque da linha ST-B (escala logarítmica)</span>
+  <div class="seg">${Object.values(UN_G).map(u=>`<button data-un="${u.k}" class="${u.k===unGraf?"ativo":""}">${u.rot}</button>`).join("")}</div></div>
+  <div class="svgbox">${graficoSVG(id,unGraf,alvoKgf)}</div>
+  <div class="leg"><span><i style="background:#212121"></i>Faixa do modelo</span><span><i style="background:#FDA700"></i>Zona ideal (20% a 80%)</span><span><i style="background:#c9c9c9"></i>Outros modelos</span>${alvoKgf!=null?`<span><i style="background:#E30613;width:3px"></i>Torque do simulador</span>`:""}</div></div>`;
+}
+
 /* ===== Ficha ===== */
 function acharItem(id){return PARAF.find(x=>x.id===id)||ALIM.find(x=>x.id===id)||TORQ.find(x=>x.id===id)||ACES.find(x=>x.id===id)}
 function specParaf(p){return [["Adaptador de energia",p.adaptador],["Tensão de entrada",p.tensao],["Potência nominal",p.pot+"W"],["Velocidade sem carga",`0 ~ ${p.rpm} RPM`],["Torque (kgf·cm)",faixa(p.kgf)],["Torque (N·m)",faixa(p.nm)],["Torque (lbf·in)",faixa(p.lbf)],["Precisão de torque",`±${p.prec}%`],["Tipo de bit (ponteiras)",p.bit],["Tamanho de parafuso",`${fmt(p.paraf[0])} ~ ${fmt(p.paraf[1])} mm`],["Peso líquido",`${fmt(p.peso)} kg`]]}
@@ -517,7 +560,7 @@ function abrirFicha(id){
   const aces=ehP?`<h5>Acessórios</h5><div class="chips"><span class="chip">Balancim industrial ST-30SC</span><span class="chip">Alimentador de parafusos KS-1050</span><span class="chip">Ponteiras e bits industriais</span><span class="chip">Torquímetro digital KTS-100</span></div>`:"";
   $("#ficha").innerHTML=`<div class="cab"><small>${grupo}</small><h2>${x.id}${ehP?" – Automática":""}</h2><p>${x.lema}</p><button class="fechar" aria-label="Fechar">×</button></div>
    <div class="corpo"><div class="galeria"><img src="${im(x.img)}" alt="${x.id}">${x.dim?`<img class="dim" src="${im(x.dim)}" alt="Dimensional">`:""}</div>
-   <div><p style="margin-top:0">${x.desc}</p>${dest}<h5>Parâmetros técnicos</h5><table class="spec">${spec.map(s=>`<tr><th>${s[0]}</th><td>${s[1]}</td></tr>`).join("")}</table>${difs}${aces}</div></div>
+   <div><p style="margin-top:0">${x.desc}</p>${dest}<h5>Parâmetros técnicos</h5><table class="spec">${spec.map(s=>`<tr><th>${s[0]}</th><td>${s[1]}</td></tr>`).join("")}</table>${ehP?blocoGrafico(x.id):""}${difs}${aces}</div></div>
    <div class="rodape"><button class="btn" data-share="png" data-id="${x.id}">Compartilhar folder PNG</button><button class="btn escuro" data-share="pdf" data-id="${x.id}">Compartilhar folder PDF</button>${ehP?`<label class="cmp" style="margin-left:auto"><input type="checkbox" data-cmp="${x.id}" ${marcados.includes(x.id)?"checked":""}> Comparar</label>`:""}</div>`;
   $("#modal").classList.add("aberto"); document.body.style.overflow="hidden";
 }
@@ -525,6 +568,7 @@ function fecharFicha(){$("#modal").classList.remove("aberto");document.body.styl
 $("#modal").addEventListener("click",e=>{
   if(e.target.id==="modal"||e.target.closest(".fechar"))return fecharFicha();
   const s=e.target.closest("[data-share]"); if(s)compartilharFolder(s.dataset.id,s.dataset.share);
+  const u=e.target.closest("[data-un]"); if(u){const g=u.closest("[data-graf]");unGraf=u.dataset.un;guardar("ungraf",unGraf);g.querySelector(".svgbox").innerHTML=graficoSVG(g.dataset.graf,unGraf,alvoKgf);g.querySelectorAll("[data-un]").forEach(b=>b.classList.toggle("ativo",b===u))}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape")fecharFicha()});
 
@@ -687,7 +731,7 @@ async function desenharBase(ctx,W,H){
 }
 async function canvasFolder(id){
   const x=acharItem(id);const ehP=!!x.rpm;const spec=ehP?specParaf(x):x.spec;
-  const W=1080,H=1528;const c=document.createElement("canvas");c.width=W;c.height=H;const ctx=c.getContext("2d");
+  const W=1080,H=ehP?1830:1528;const c=document.createElement("canvas");c.width=W;c.height=H;const ctx=c.getContext("2d");
   await desenharBase(ctx,W,H);
   const grupo=ehP?"PARAFUSADEIRA ELÉTRICA · "+x.classe.toUpperCase():ALIM.includes(x)?"ALIMENTADOR DE PARAFUSOS":TORQ.includes(x)?"TORQUÍMETRO DIGITAL":"ACESSÓRIO INDUSTRIAL";
   ctx.fillStyle="#E39500";ctx.font=`800 22px ${FONTE}`;ctx.fillText(grupo,50,215);
@@ -713,6 +757,21 @@ async function canvasFolder(id){
     ctx.fillStyle="#6d6d6d";ctx.font=`600 19px ${FONTE}`;ll.forEach((l,k)=>ctx.fillText(l,x0+14,y+28+k*26));
     ctx.fillStyle="#212121";ctx.font=`700 20px ${FONTE}`;vl.forEach((l,k)=>ctx.fillText(l,x0+290,y+28+k*26));
     y+=rh;
+  }
+  // gráfico de torque
+  if(ehP){
+    let gy=Math.max(y,960)+30;
+    ctx.fillStyle="#212121";ctx.fillRect(50,gy,W-100,44);ctx.fillStyle="#fff";ctx.font=`800 20px ${FONTE}`;ctx.fillText("GRÁFICO DE TORQUE · kgf·cm (escala logarítmica)",66,gy+29);gy+=58;
+    const g=graficoTorque(x.id,"kgf",null,{w:W-100,linha:40,esq:150});const ox=50,oy=gy;
+    ctx.font=`600 17px ${FONTE}`;ctx.textAlign="center";
+    for(const t of g.U.ticks){const tx=ox+g.lx(t);ctx.fillStyle="#e6e6e6";ctx.fillRect(tx,oy,1.5,g.H-30);ctx.fillStyle="#6d6d6d";ctx.fillText(fmt(t),tx,oy+g.H-6)}
+    ctx.textAlign="left";
+    for(const b of g.barras){const cy=oy+b.y+g.linha/2,x1=ox+g.lx(b.a),x2=ox+g.lx(b.b);
+      if(b.on){ctx.fillStyle="#FFF6E0";ctx.fillRect(ox,oy+b.y+3,g.W,g.linha-6)}
+      ctx.fillStyle=b.on?"#212121":"#6d6d6d";ctx.font=`${b.on?800:600} 19px ${FONTE}`;ctx.textAlign="right";ctx.fillText(b.p.id,ox+g.esq-14,cy+7);ctx.textAlign="left";
+      ctx.fillStyle=b.on?"#212121":"#c9c9c9";ctx.fillRect(x1,cy-8,x2-x1,16);
+      if(b.on){ctx.fillStyle="#FDA700";ctx.fillRect(ox+g.lx(b.ia),cy-8,g.lx(b.ib)-g.lx(b.ia),16);ctx.fillStyle="#212121";ctx.font=`800 18px ${FONTE}`;const tx=`${fmt(b.a)} – ${fmt(b.b)}`;const fora=x2+10+ctx.measureText(tx).width>ox+g.W;ctx.textAlign=fora?"right":"left";ctx.fillText(tx,fora?x1-10:x2+10,cy+7);ctx.textAlign="left"}}
+    y=oy+g.H+10;
   }
   // descrição
   let dy=Math.max(y,960)+40;ctx.fillStyle="#333";ctx.font=`500 23px ${FONTE}`;
@@ -784,7 +843,7 @@ const abaSalva=ler("aba","simulador"); if($("#"+abaSalva))abrirAba(abaSalva);
 <div id="pwaBarra" role="dialog" aria-live="polite"><img src="icons/icon-192.png" alt=""><div class="t" id="pwaTxt"></div><button id="pwaOk"></button><button class="x" id="pwaX" aria-label="Fechar">×</button></div>
 <script>
 (function(){
-  var VERSAO="37a8b6488fa9";
+  var VERSAO="70c78dcafc27";
   var barra=document.getElementById("pwaBarra"),txt=document.getElementById("pwaTxt"),ok=document.getElementById("pwaOk"),x=document.getElementById("pwaX"),acao=null;
   function mostrar(html,botao,fn){txt.innerHTML=html;ok.textContent=botao;acao=fn;barra.style.display="flex"}
   ok.onclick=function(){if(acao)acao()};
