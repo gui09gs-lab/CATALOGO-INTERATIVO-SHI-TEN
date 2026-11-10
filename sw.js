@@ -1,6 +1,6 @@
 /* Service worker do catálogo SHI-TEN: rede primeiro, cache como reserva (funciona offline). */
-const CACHE = "shiten-2331c90f76ad";
-const ARQUIVOS = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-64.png"];
+const CACHE = "shiten-ef46750a63ce";
+const ARQUIVOS = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon-64.png", "catalogo.enc"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
