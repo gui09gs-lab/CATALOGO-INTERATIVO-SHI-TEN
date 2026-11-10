@@ -511,40 +511,50 @@ document.addEventListener("click",e=>{
   const g=e.target.closest("[data-gen]"); if(g){abrirFicha(g.dataset.gen);return}
 });
 
-/* ===== Gráfico de torque (faixas do catálogo, escala logarítmica) ===== */
-const UN_G={kgf:{k:"kgf",rot:"kgf·cm",dom:[0.2,130],ticks:[0.3,1,3,10,30,100]},nm:{k:"nm",rot:"N·m",dom:[0.02,13],ticks:[0.03,0.1,0.3,1,3,10]},lbf:{k:"lbf",rot:"lbf·in",dom:[0.2,115],ticks:[0.3,1,3,10,30,100]}};
+/* ===== Gráfico torque × escala (anel 1 a 7) =====
+   O catálogo informa só torque mínimo e máximo; a escala é marcada de 1 a 7 em todas as ST-B.
+   Valores intermediários = interpolação linear (estimativa, não é tabela do fabricante). */
+const ESC_N=7;
+const UN_G={kgf:{k:"kgf",rot:"kgf·cm",f:1},nm:{k:"nm",rot:"N·m",f:KGF_NM},lbf:{k:"lbf",rot:"lbf·in",f:KGF_LBF}};
 let unGraf=ler("ungraf","kgf");
-function graficoTorque(ativo,un,alvo,opt={}){
-  // devolve geometria para SVG e canvas
-  const U=UN_G[un]||UN_G.kgf, W=opt.w||640, linha=opt.linha||34, esq=opt.esq||92, dir=16, topo=10, base=28;
-  const H=topo+PARAF.length*linha+base, lw=W-esq-dir;
-  const lx=v=>esq+lw*(Math.log10(v)-Math.log10(U.dom[0]))/(Math.log10(U.dom[1])-Math.log10(U.dom[0]));
-  const fator=un==="nm"?KGF_NM:un==="lbf"?KGF_LBF:1;
-  const barras=PARAF.map((p,i)=>{const [a,b]=p[U.k];const ia=a+(b-a)*.2, ib=a+(b-a)*.8;return {p,i,a,b,ia,ib,y:topo+i*linha,on:p.id===ativo}});
-  const alvoU=alvo!=null?alvo*fator:null;
-  return {U,W,H,linha,esq,topo,lw,lx,barras,alvoU};
+function torqueEscala(p,n,un="kgf"){const [a,b]=p[un];return a+(b-a)*(n-1)/(ESC_N-1)}
+function escalaPara(p,tKgf){const [a,b]=p.kgf;if(tKgf<a||tKgf>b)return null;return 1+(ESC_N-1)*(tKgf-a)/(b-a)}
+const fmtEsc=v=>fmt(v,1);
+function geoEscala(p,un,opt={}){
+  const W=opt.w||640,H=opt.h||250,esq=opt.esq||58,dir=opt.dir||20,topo=opt.topo||26,base=opt.base||40;
+  const max=p[un][1]*1.12;const lw=W-esq-dir,lh=H-topo-base;
+  const gx=n=>esq+lw*(n-1)/(ESC_N-1), gy=v=>topo+lh*(1-v/max);
+  const ticksY=[];const passo=[0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,50,100].find(q=>max/q<=6);for(let v=0;v<=max;v+=passo)ticksY.push(+v.toFixed(4));
+  return {W,H,esq,dir,topo,base,max,gx,gy,ticksY};
 }
-function graficoSVG(ativo,un,alvo){
-  const peq=window.innerWidth<600;const g=graficoTorque(ativo,un,alvo,peq?{w:340,esq:66,linha:30}:{});const {U,W,H,linha,esq,topo,lx,barras,alvoU}=g;
+function graficoSVG(id,un,alvo){
+  const p=PARAF.find(x=>x.id===id);const U=UN_G[un]||UN_G.kgf;const peq=window.innerWidth<600;
+  const g=geoEscala(p,U.k,peq?{w:360,h:230,esq:46}:{});const {W,H,esq,dir,topo,base,gx,gy,ticksY}=g;
   const nf=v=>fmt(v,v<0.1?3:2);
-  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de faixas de torque da linha ST-B em ${U.rot}">`;
-  for(const t of U.ticks){const x=lx(t).toFixed(1);s+=`<line x1="${x}" x2="${x}" y1="${topo-4}" y2="${H-24}" stroke="#e6e6e6"/><text x="${x}" y="${H-8}" font-size="11" text-anchor="middle" fill="#6d6d6d">${nf(t)}</text>`}
-  for(const b of barras){
-    const cy=b.y+linha/2, x1=lx(b.a), x2=lx(b.b);
-    if(b.on)s+=`<rect x="0" y="${b.y+2}" width="${W}" height="${linha-4}" rx="6" fill="#FFF6E0"/>`;
-    s+=`<text x="${esq-10}" y="${cy+4}" font-size="12" font-weight="${b.on?800:600}" text-anchor="end" fill="${b.on?"#212121":"#6d6d6d"}">${b.p.id}</text>`;
-    s+=`<rect x="${x1.toFixed(1)}" y="${cy-6}" width="${(x2-x1).toFixed(1)}" height="12" rx="3" fill="${b.on?"#212121":"#c9c9c9"}"/>`;
-    if(b.on){s+=`<rect x="${lx(b.ia).toFixed(1)}" y="${cy-6}" width="${(lx(b.ib)-lx(b.ia)).toFixed(1)}" height="12" rx="3" fill="#FDA700"/>`;
-      const fora=x2>W-(peq?70:90);s+=`<text x="${(fora?x1-6:x2+6).toFixed(1)}" y="${cy+4}" font-size="11" font-weight="800" text-anchor="${fora?"end":"start"}" fill="#212121">${nf(b.a)} – ${nf(b.b)}</text>`}
-  }
-  if(alvoU!=null&&alvoU>=U.dom[0]&&alvoU<=U.dom[1]){const x=lx(alvoU).toFixed(1);s+=`<line x1="${x}" x2="${x}" y1="${topo-6}" y2="${H-24}" stroke="#E30613" stroke-width="2.5"/><text x="${x}" y="${topo+2}" dx="4" font-size="11" font-weight="800" fill="#E30613">alvo ${nf(alvoU)}</text>`}
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Torque por posição da escala da ${p.id} em ${U.rot}">`;
+  const zi=1+(ESC_N-1)*.2,zf=1+(ESC_N-1)*.8;
+  s+=`<rect x="${gx(zi).toFixed(1)}" y="${topo}" width="${(gx(zf)-gx(zi)).toFixed(1)}" height="${H-topo-base}" fill="#FFF6E0"/>`;
+  for(const v of ticksY){const y=gy(v).toFixed(1);s+=`<line x1="${esq}" x2="${W-dir}" y1="${y}" y2="${y}" stroke="#ececec"/><text x="${esq-8}" y="${(+y+4)}" font-size="11" text-anchor="end" fill="#6d6d6d">${nf(v)}</text>`}
+  const pts=[];for(let n=1;n<=ESC_N;n++)pts.push([gx(n),gy(torqueEscala(p,n,U.k)),torqueEscala(p,n,U.k),n]);
+  s+=`<polyline points="${pts.map(q=>q[0].toFixed(1)+","+q[1].toFixed(1)).join(" ")}" fill="none" stroke="#FDA700" stroke-width="3" stroke-dasharray="7 5"/>`;
+  for(const [x,y,v,n] of pts){s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="#212121"/><text x="${x.toFixed(1)}" y="${(y-10).toFixed(1)}" font-size="${peq?10:11}" font-weight="800" text-anchor="${n===1?"start":"middle"}" fill="#212121">${nf(v)}</text>`;
+    s+=`<text x="${x.toFixed(1)}" y="${H-base+18}" font-size="12" font-weight="800" text-anchor="middle" fill="#212121">${n}</text>`}
+  s+=`<text x="${(esq+(W-dir))/2}" y="${H-4}" font-size="11" text-anchor="middle" fill="#6d6d6d">Posição da escala</text>`;
+  s+=`<text x="4" y="12" font-size="11" fill="#6d6d6d">Torque (${U.rot})</text>`;
+  const e=alvo!=null?escalaPara(p,alvo):null;
+  if(e!=null){const x=gx(e).toFixed(1),y=gy(alvo*U.f).toFixed(1);
+    s+=`<line x1="${esq}" x2="${x}" y1="${y}" y2="${y}" stroke="#E30613" stroke-width="2" stroke-dasharray="4 3"/><line x1="${x}" x2="${x}" y1="${y}" y2="${H-base}" stroke="#E30613" stroke-width="2" stroke-dasharray="4 3"/><circle cx="${x}" cy="${y}" r="6" fill="#E30613"/>`;
+    const fora=gx(e)>W*.72;s+=`<text x="${x}" y="${(+y+20)}" dx="${fora?-8:8}" font-size="11" font-weight="800" text-anchor="${fora?"end":"start"}" fill="#E30613">alvo ${nf(alvo*U.f)} ≈ escala ${fmtEsc(e)}</text>`}
   return s+"</svg>";
 }
 function blocoGrafico(id){
-  return `<h5>Gráfico de torque</h5><div class="grafico" data-graf="${id}"><div class="topo-g"><span style="font-size:12px;color:var(--cinza)">Faixa de torque da linha ST-B (escala logarítmica)</span>
+  const p=PARAF.find(x=>x.id===id);
+  const e=alvoKgf!=null?escalaPara(p,alvoKgf):null;
+  return `<h5>Gráfico de torque × escala</h5><div class="grafico" data-graf="${id}"><div class="topo-g"><span style="font-size:12px;color:var(--cinza)">Anel de regulagem marcado de 1 a ${ESC_N}</span>
   <div class="seg">${Object.values(UN_G).map(u=>`<button data-un="${u.k}" class="${u.k===unGraf?"ativo":""}">${u.rot}</button>`).join("")}</div></div>
   <div class="svgbox">${graficoSVG(id,unGraf,alvoKgf)}</div>
-  <div class="leg"><span><i style="background:#212121"></i>Faixa do modelo</span><span><i style="background:#FDA700"></i>Zona ideal (20% a 80%)</span><span><i style="background:#c9c9c9"></i>Outros modelos</span>${alvoKgf!=null?`<span><i style="background:#E30613;width:3px"></i>Torque do simulador</span>`:""}</div></div>`;
+  <div class="leg"><span><i style="background:#FDA700"></i>Torque estimado por posição</span><span><i style="background:#FFF6E0;border:1px solid #F5D78A"></i>Zona ideal (20% a 80%)</span>${e!=null?`<span><i style="background:#E30613;width:3px"></i>Torque do simulador ≈ escala ${fmtEsc(e)}</span>`:""}</div>
+  <div class="nota" style="margin:0 2px 8px">Posições 1 e ${ESC_N} = torque mínimo e máximo do catálogo. As intermediárias são estimativa linear: confirme sempre com o torquímetro KTS.</div></div>`;
 }
 
 /* ===== Ficha ===== */
@@ -568,7 +578,7 @@ function fecharFicha(){$("#modal").classList.remove("aberto");document.body.styl
 $("#modal").addEventListener("click",e=>{
   if(e.target.id==="modal"||e.target.closest(".fechar"))return fecharFicha();
   const s=e.target.closest("[data-share]"); if(s)compartilharFolder(s.dataset.id,s.dataset.share);
-  const u=e.target.closest("[data-un]"); if(u){const g=u.closest("[data-graf]");unGraf=u.dataset.un;guardar("ungraf",unGraf);g.querySelector(".svgbox").innerHTML=graficoSVG(g.dataset.graf,unGraf,alvoKgf);g.querySelectorAll("[data-un]").forEach(b=>b.classList.toggle("ativo",b===u))}
+  const u=e.target.closest("[data-un]"); if(u){const g=u.closest("[data-graf]");unGraf=u.dataset.un;guardar("ungraf",unGraf);g.outerHTML=blocoGrafico(g.dataset.graf).replace(/^<h5>[^<]*<\/h5>/,"")}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape")fecharFicha()});
 
@@ -643,6 +653,7 @@ function simular(){
    <div class="info"><span class="selo">Modelo recomendado</span><h3>${p.id}</h3><div style="color:var(--cinza)">${p.classe} · ${p.lema}</div>
    ${escalaHTML(p,t)}
    <div class="chips" style="margin-top:12px"><span class="chip"><b>${faixa(p.kgf)}</b> kgf·cm</span><span class="chip">${faixa(p.nm)} N·m</span><span class="chip">${faixa(p.lbf)} lbf·in</span><span class="chip">±${p.prec}%</span><span class="chip">0 – ${p.rpm} RPM</span><span class="chip">Parafuso ${fmt(p.paraf[0])} – ${fmt(p.paraf[1])} mm</span><span class="chip">${fmt(p.peso)} kg</span></div>
+   <div class="aviso" style="background:#F4F4F2;border-color:#e2e2e2">Regulagem sugerida: <b>escala ≈ ${fmtEsc(escalaPara(p,t))}</b> (anel de 1 a ${ESC_N}, estimativa linear). Ajuste fino com torquímetro.</div>
    ${avisos.map(a=>`<div class="aviso">${a}</div>`).join("")}
    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn" onclick="abrirFicha('${p.id}')">Ver ficha</button><button class="btn escuro" onclick="compartilharFolder('${p.id}','png')">Compartilhar folder</button>${alts.length?`<button class="btn claro" onclick="compararCom(['${p.id}',${alts.map(a=>`'${a.p.id}'`).join(",")}])">Comparar com alternativas</button>`:""}</div>
    </div></div>
@@ -677,6 +688,7 @@ function renderComparar(){
   }
   if(coberto){
     h+=`<tr class="escala-l"><td>Escala (alvo ${fmt(t)} kgf·cm)</td>${ps.map(p=>{const L=v=>(v/maxK*100).toFixed(2)+"%";const ok=t>=p.kgf[0]&&t<=p.kgf[1];return `<td><div class="minibar"><div class="f" style="left:${L(p.kgf[0])};width:calc(${L(p.kgf[1])} - ${L(p.kgf[0])});background:${ok?"var(--laranja)":"#9a9a9a"}"></div>${t<=maxK?`<div class="a" style="left:${L(t)}"></div>`:""}</div><div style="font-size:11px;margin-top:3px;font-weight:700;color:${ok?"var(--ok)":"var(--cinza)"}">${ok?"Cobre o alvo":"Não cobre"}</div></td>`}).join("")}</tr>`;
+    h+=`<tr class="escala-l"><td>Escala sugerida (1 a ${ESC_N}, estimativa)</td>${ps.map(p=>{const e=escalaPara(p,t);return `<td>${e!=null?"≈ "+fmtEsc(e):"-"}</td>`}).join("")}</tr>`;
     h+=`<tr class="escala-l"><td>Posição do alvo na faixa</td>${ps.map(p=>{const a=avalia(p,t);return `<td>${a?Math.round(a.pos*100)+"%"+(a.ideal?" · ideal":""):"-"}</td>`}).join("")}</tr>`;
   }
   h+=`<tr><td></td>${ps.map(p=>`<td><button class="btn peq" onclick="abrirFicha('${p.id}')">Ficha</button></td>`).join("")}</tr></tbody></table>`;
@@ -758,20 +770,21 @@ async function canvasFolder(id){
     ctx.fillStyle="#212121";ctx.font=`700 20px ${FONTE}`;vl.forEach((l,k)=>ctx.fillText(l,x0+290,y+28+k*26));
     y+=rh;
   }
-  // gráfico de torque
+  // gráfico torque × escala
   if(ehP){
     let gy=Math.max(y,960)+30;
-    ctx.fillStyle="#212121";ctx.fillRect(50,gy,W-100,44);ctx.fillStyle="#fff";ctx.font=`800 20px ${FONTE}`;ctx.fillText("GRÁFICO DE TORQUE · kgf·cm (escala logarítmica)",66,gy+29);gy+=58;
-    const g=graficoTorque(x.id,"kgf",null,{w:W-100,linha:40,esq:150});const ox=50,oy=gy;
-    ctx.font=`600 17px ${FONTE}`;ctx.textAlign="center";
-    for(const t of g.U.ticks){const tx=ox+g.lx(t);ctx.fillStyle="#e6e6e6";ctx.fillRect(tx,oy,1.5,g.H-30);ctx.fillStyle="#6d6d6d";ctx.fillText(fmt(t),tx,oy+g.H-6)}
-    ctx.textAlign="left";
-    for(const b of g.barras){const cy=oy+b.y+g.linha/2,x1=ox+g.lx(b.a),x2=ox+g.lx(b.b);
-      if(b.on){ctx.fillStyle="#FFF6E0";ctx.fillRect(ox,oy+b.y+3,g.W,g.linha-6)}
-      ctx.fillStyle=b.on?"#212121":"#6d6d6d";ctx.font=`${b.on?800:600} 19px ${FONTE}`;ctx.textAlign="right";ctx.fillText(b.p.id,ox+g.esq-14,cy+7);ctx.textAlign="left";
-      ctx.fillStyle=b.on?"#212121":"#c9c9c9";ctx.fillRect(x1,cy-8,x2-x1,16);
-      if(b.on){ctx.fillStyle="#FDA700";ctx.fillRect(ox+g.lx(b.ia),cy-8,g.lx(b.ib)-g.lx(b.ia),16);ctx.fillStyle="#212121";ctx.font=`800 18px ${FONTE}`;const tx=`${fmt(b.a)} – ${fmt(b.b)}`;const fora=x2+10+ctx.measureText(tx).width>ox+g.W;ctx.textAlign=fora?"right":"left";ctx.fillText(tx,fora?x1-10:x2+10,cy+7);ctx.textAlign="left"}}
-    y=oy+g.H+10;
+    ctx.fillStyle="#212121";ctx.fillRect(50,gy,W-100,44);ctx.fillStyle="#fff";ctx.font=`800 20px ${FONTE}`;ctx.fillText("TORQUE × ESCALA (kgf·cm) · ANEL DE 1 A 7",66,gy+29);gy+=54;
+    const g=geoEscala(x,"kgf",{w:W-100,h:300,esq:80,topo:34,base:46});const ox=50,oy=gy;
+    const zi=1+(ESC_N-1)*.2,zf=1+(ESC_N-1)*.8;ctx.fillStyle="#FFF6E0";ctx.fillRect(ox+g.gx(zi),oy+g.topo,g.gx(zf)-g.gx(zi),g.H-g.topo-g.base);
+    ctx.font=`600 17px ${FONTE}`;ctx.textAlign="right";
+    for(const v of g.ticksY){const ty=oy+g.gy(v);ctx.fillStyle="#e6e6e6";ctx.fillRect(ox+g.esq,ty,g.W-g.esq-g.dir,1.5);ctx.fillStyle="#6d6d6d";ctx.fillText(fmt(v),ox+g.esq-10,ty+6)}
+    ctx.strokeStyle="#FDA700";ctx.lineWidth=4;ctx.setLineDash([12,8]);ctx.beginPath();
+    for(let n=1;n<=ESC_N;n++){const px=ox+g.gx(n),py=oy+g.gy(torqueEscala(x,n));n===1?ctx.moveTo(px,py):ctx.lineTo(px,py)}ctx.stroke();ctx.setLineDash([]);
+    ctx.textAlign="center";
+    for(let n=1;n<=ESC_N;n++){const v=torqueEscala(x,n),px=ox+g.gx(n),py=oy+g.gy(v);ctx.fillStyle="#212121";ctx.beginPath();ctx.arc(px,py,7,0,7);ctx.fill();ctx.font=`800 18px ${FONTE}`;ctx.textAlign=n===1?"left":"center";ctx.fillText(fmt(v),n===1?px+6:px,py-14);ctx.textAlign="center";ctx.font=`800 20px ${FONTE}`;ctx.fillText(String(n),px,oy+g.H-g.base+26)}
+    ctx.textAlign="left";ctx.fillStyle="#6d6d6d";ctx.font=`500 16px ${FONTE}`;
+    ctx.fillText("Posições 1 e 7 = mínimo e máximo do catálogo; intermediárias = estimativa linear. Confirme com torquímetro.",50,oy+g.H+18);
+    y=oy+g.H+24;
   }
   // descrição
   let dy=Math.max(y,960)+40;ctx.fillStyle="#333";ctx.font=`500 23px ${FONTE}`;
@@ -843,7 +856,7 @@ const abaSalva=ler("aba","simulador"); if($("#"+abaSalva))abrirAba(abaSalva);
 <div id="pwaBarra" role="dialog" aria-live="polite"><img src="icons/icon-192.png" alt=""><div class="t" id="pwaTxt"></div><button id="pwaOk"></button><button class="x" id="pwaX" aria-label="Fechar">×</button></div>
 <script>
 (function(){
-  var VERSAO="70c78dcafc27";
+  var VERSAO="2331c90f76ad";
   var barra=document.getElementById("pwaBarra"),txt=document.getElementById("pwaTxt"),ok=document.getElementById("pwaOk"),x=document.getElementById("pwaX"),acao=null;
   function mostrar(html,botao,fn){txt.innerHTML=html;ok.textContent=botao;acao=fn;barra.style.display="flex"}
   ok.onclick=function(){if(acao)acao()};
